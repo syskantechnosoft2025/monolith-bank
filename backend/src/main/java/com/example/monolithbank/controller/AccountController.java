@@ -4,6 +4,7 @@ import com.example.monolithbank.domain.Account;
 import com.example.monolithbank.domain.AccountType;
 import com.example.monolithbank.domain.User;
 import com.example.monolithbank.dto.ApiResponse;
+import com.example.monolithbank.dto.AccountRequest;
 import com.example.monolithbank.repository.UserRepository;
 import com.example.monolithbank.security.UserPrincipal;
 import com.example.monolithbank.service.AccountService;
@@ -33,11 +34,17 @@ public class AccountController {
     @PostMapping
     @PreAuthorize("hasRole('CUSTOMER') or hasRole('MANAGER') or hasRole('ADMIN')")
     public ResponseEntity<Account> createAccount(@AuthenticationPrincipal UserPrincipal principal,
-                                                 @RequestParam AccountType accountType,
-                                                 @RequestParam @NotNull BigDecimal initialDeposit) {
+                                                 @RequestBody @NotNull AccountRequest request) {
         User user = userRepository.findByUsername(principal.getUsername()).orElseThrow(() -> new RuntimeException("User not found"));
-        Account account = accountService.createAccount(user, accountType, initialDeposit);
+        Account account = accountService.createAccount(user, request.getAccountType(), request.getInitialDeposit());
         return ResponseEntity.ok(account);
+    }
+
+    @PostMapping("/approve-loan")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> approveLoan(@RequestParam(name = "accountNumber") String accountNumber) {
+        accountService.approveLoan(accountNumber);
+        return ResponseEntity.ok(new ApiResponse(true, "Loan account approved"));
     }
 
     @GetMapping("/me")

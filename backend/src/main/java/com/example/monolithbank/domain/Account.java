@@ -25,6 +25,9 @@ public class Account {
     private BigDecimal balance;
 
     @Column(nullable = false)
+    private boolean approved = true;
+
+    @Column(nullable = false)
     private LocalDateTime createdAt;
 
     @ManyToOne(fetch = FetchType.EAGER)
@@ -52,6 +55,8 @@ public class Account {
     public void setType(AccountType type) { this.type = type; }
     public BigDecimal getBalance() { return balance; }
     public void setBalance(BigDecimal balance) { this.balance = balance; }
+    public boolean isApproved() { return approved; }
+    public void setApproved(boolean approved) { this.approved = approved; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public User getOwner() { return owner; }

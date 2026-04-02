@@ -12,5 +12,7 @@ public interface AccountService {
     List<Account> getAccountsByUser(User user);
     Account findByNumber(String accountNumber);
 
+    Account approveLoan(String accountNumber);
+
     Account updateAccount(Account account);
 }

@@ -34,6 +34,11 @@ public class AccountServiceImpl implements AccountService {
         account.setBalance(deposit);
         account.setAccountNumber("AC" + System.currentTimeMillis());
         account.setCreatedAt(LocalDateTime.now());
+        if (type == AccountType.LOAN) {
+            account.setApproved(false);
+        } else {
+            account.setApproved(true);
+        }
 
         return accountRepository.save(account);
     }
@@ -52,5 +57,18 @@ public class AccountServiceImpl implements AccountService {
     @Override
     public Account updateAccount(Account account) {
         return accountRepository.save(account);
+    }
+
+    @Override
+    public Account approveLoan(String accountNumber) {
+        Account loanAccount = accountRepository.findByAccountNumber(accountNumber)
+                .orElseThrow(() -> new BadRequestException("Account not found"));
+
+        if (loanAccount.getType() != AccountType.LOAN) {
+            throw new BadRequestException("Only loan accounts can be approved by admin");
+        }
+
+        loanAccount.setApproved(true);
+        return accountRepository.save(loanAccount);
     }
 }

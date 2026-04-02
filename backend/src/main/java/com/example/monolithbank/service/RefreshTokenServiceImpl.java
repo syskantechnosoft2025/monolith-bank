@@ -24,10 +24,11 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
 
     @Override
     public RefreshToken createRefreshToken(User user) {
-        RefreshToken refreshToken = new RefreshToken();
+        RefreshToken refreshToken = refreshTokenRepository.findByUserId(user.getId()).orElse(new RefreshToken());
         refreshToken.setUser(user);
         refreshToken.setExpiryDate(Instant.now().plusMillis(jwtConfig.getRefreshTokenExpirationMs()));
         refreshToken.setToken(UUID.randomUUID().toString());
+        System.out.println("DEBUG: createRefreshToken for user id=" + user.getId() + ", existing token id=" + (refreshToken.getId() == null ? "null" : refreshToken.getId()));
         return refreshTokenRepository.save(refreshToken);
     }
 
