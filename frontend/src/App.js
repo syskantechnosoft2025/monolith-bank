@@ -55,7 +55,7 @@ function App() {
       {view === 'login' && (
         <div className="card">
           <Login onLogin={handleLogin} showToast={showToast} />
-          <button className="btn btn-secondary" onClick={() => setView('register')} style={{ marginTop: '15px' }}>Create Account</button>
+          <button className="btn btn-secondary" onClick={() => setView('register')} style={{ marginTop: '15px' }}>Register</button>
         </div>
       )}
       {view === 'register' && (

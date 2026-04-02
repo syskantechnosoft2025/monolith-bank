@@ -45,7 +45,7 @@ export default function Login({ onLogin, showToast }) {
             required
           />
         </div>
-        <button type="submit" className="btn btn-primary btn-block">Sign In</button>
+          <button type="submit" className="btn btn-primary btn-block">Login</button>
       </form>
     </div>
   );
