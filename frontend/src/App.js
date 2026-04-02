@@ -9,6 +9,14 @@ function App() {
   const [token, setToken] = useState(null);
   const [roles, setRoles] = useState([]);
   const [view, setView] = useState('login'); // login, register, dashboard
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState('error');
+
+  const showToast = (message, type = 'error') => {
+    setToastMessage(message);
+    setToastType(type);
+    setTimeout(() => setToastMessage(''), 3500);
+  };
 
   const handleLogin = (accessToken, userRoles) => {
     setToken(accessToken);
@@ -20,31 +28,40 @@ function App() {
     setToken(null);
     setRoles([]);
     setView('login');
+    showToast('You have been logged out.', 'success');
   };
 
   const renderDashboard = () => {
     if (roles.includes('ROLE_ADMIN')) {
-      return <AdminDashboard token={token} onLogout={handleLogout} />;
+      return <AdminDashboard token={token} onLogout={handleLogout} showToast={showToast} />;
     } else if (roles.includes('ROLE_MANAGER')) {
-      return <ManagerDashboard token={token} onLogout={handleLogout} />;
+      return <ManagerDashboard token={token} onLogout={handleLogout} showToast={showToast} />;
     } else {
-      return <CustomerDashboard token={token} onLogout={handleLogout} />;
+      return <CustomerDashboard token={token} onLogout={handleLogout} showToast={showToast} />;
     }
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1>Monolith Bank</h1>
+    <div className="app-container">
+      <header className="app-header">
+        <h1 className="app-title">Monolith Bank</h1>
+      </header>
+
+      {toastMessage && (
+        <div className={`toast ${toastType}`} role="alert">
+          {toastMessage}
+        </div>
+      )}
       {view === 'login' && (
-        <div>
-          <Login onLogin={handleLogin} />
-          <button onClick={() => setView('register')}>Register</button>
+        <div className="card">
+          <Login onLogin={handleLogin} showToast={showToast} />
+          <button className="btn btn-secondary" onClick={() => setView('register')} style={{ marginTop: '15px' }}>Create Account</button>
         </div>
       )}
       {view === 'register' && (
-        <div>
-          <Register onRegister={() => setView('login')} />
-          <button onClick={() => setView('login')}>Back to Login</button>
+        <div className="card">
+          <Register onRegister={() => setView('login')} showToast={showToast} />
+          <button className="btn btn-secondary" onClick={() => setView('login')} style={{ marginTop: '15px' }}>Back to Login</button>
         </div>
       )}
       {view === 'dashboard' && renderDashboard()}

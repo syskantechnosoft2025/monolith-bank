@@ -3,9 +3,8 @@ import axios from 'axios';
 
 const API = 'http://localhost:8080/api';
 
-export default function ManagerDashboard({ token, onLogout }) {
+export default function ManagerDashboard({ token, onLogout, showToast }) {
   const [accounts, setAccounts] = useState([]);
-  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchAccounts();
@@ -18,22 +17,37 @@ export default function ManagerDashboard({ token, onLogout }) {
       });
       setAccounts(res.data);
     } catch (err) {
-      setError(err.response?.data?.message || 'Unable to load accounts');
+      showToast(err.response?.data?.message || 'Unable to load accounts', 'error');
     }
   };
 
   return (
-    <div>
-      <button onClick={onLogout}>Logout</button>
-      <h2>Manager Dashboard</h2>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      <h3>Managed Accounts</h3>
-      <ul>
-        {accounts.map((acct) => (
-          <li key={acct.id}>{acct.number} - {acct.type} - {acct.balance.toFixed(2)} {acct.currency}</li>
-        ))}
-      </ul>
-      {/* Add manager specific features here */}
+    <div className="app-container">
+      <div className="dashboard-header">
+        <h1 className="dashboard-title">Manager Dashboard</h1>
+        <button className="btn btn-danger" onClick={onLogout}>Logout</button>
+      </div>
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Management Tools</h2>
+        </div>
+        <p>Manager controls and oversight features will be implemented here.</p>
+      </div>
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Managed Accounts</h2>
+        </div>
+        <ul className="transaction-list">
+          {accounts.map((acct) => (
+            <li key={acct.id} className="transaction-item">
+              <div>
+                <div className="transaction-desc">{acct.number} - {acct.type}</div>
+                <div className="account-number">Balance: ${acct.balance?.toFixed(2) || '0.00'}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
