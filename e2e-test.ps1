@@ -1,291 +1,280 @@
 # E2E Test Script for Monolith Bank
-# Tests: Registration, Login, Account Creation, Transfer, EMI Payment, Reports, Dashboard
+# Tests: Registration, Login, Account Creation, Transfer, Transactions, Reports, Dashboard
 
 $ErrorActionPreference = 'SilentlyContinue'
 $BaseURL = "http://localhost:8080"
-$frontendURL = "http://localhost:3000"
+$FrontendURL = "http://localhost:3000"
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "MONOLITH BANK E2E TEST SUITE" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Test 1: User Registration
-Write-Host "TEST 1: User Registration" -ForegroundColor Yellow
+# Pre-flight check: Verify backend is running
+Write-Host "PRE-FLIGHT CHECK: Backend Status" -ForegroundColor Yellow
+$backendRunning = $false
 try {
-    $registerResponse = Invoke-WebRequest -Uri "$BaseURL/api/auth/register" `
-        -Method POST `
-        -ContentType 'application/json' `
-        -Body @{
-            username = "e2euser_$(Get-Random)"
-            email = "e2e_$(Get-Random)@test.com"
-            password = "TestPass123!"
-            firstName = "E2E"
-            lastName = "User"
-        } | ConvertTo-Json `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
-    if ($registerResponse.StatusCode -in @(200, 201)) {
-        $userData = $registerResponse.Content | ConvertFrom-Json
-        $global:userId = $userData.id
-        $global:username = $userData.username
-        Write-Host "✓ Registration: SUCCESS" -ForegroundColor Green
-        Write-Host "  User: $($userData.username) (ID: $($userData.id))" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Registration: FAILED ($($registerResponse.StatusCode))" -ForegroundColor Red
+    $statusResponse = Invoke-WebRequest -Uri "$BaseURL/h2-console" -Method GET -UseBasicParsing -TimeoutSec 5
+    if ($statusResponse.StatusCode -eq 200) {
+        Write-Host "  + SUCCESS: Backend is running on port 8080" -ForegroundColor Green
+        $backendRunning = $true
     }
 } catch {
-    Write-Host "✗ Registration: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: Backend not responding. Please start the Spring Boot application first." -ForegroundColor Red
+    Write-Host "    Run: mvn spring-boot:run" -ForegroundColor Yellow
+    exit 1
+}
+Write-Host ""
+
+# Prepare test data
+$randomId = Get-Random -Maximum 9999
+$testUsername = "e2euser_$randomId"
+$testEmail = "e2e_$randomId@test.com"
+$testPassword = "TestPass123!"
+
+# Test 1: User Registration
+Write-Host "TEST 1: User Registration" -ForegroundColor Yellow
+Write-Host "  Note: Using in-memory H2 database - data persists only during this test run" -ForegroundColor Yellow
+$regSuccess = $false
+try {
+    $regPayload = @{
+        username = $testUsername
+        email = $testEmail
+        password = $testPassword
+        firstName = "E2E"
+        lastName = "User"
+    } | ConvertTo-Json
+    
+    $regResponse = Invoke-WebRequest -Uri "$BaseURL/api/auth/register" -Method POST -ContentType 'application/json' -Body $regPayload -UseBasicParsing -TimeoutSec 10
+    
+    if ($regResponse.StatusCode -in @(200, 201)) {
+        $userData = $regResponse.Content | ConvertFrom-Json
+        $script:UserId = $userData.id
+        $script:Username = $testUsername
+        Write-Host "  + SUCCESS: User $($userData.username) created" -ForegroundColor Green
+        $regSuccess = $true
+    }
+} catch {
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
 # Test 2: User Login
 Write-Host "TEST 2: User Login" -ForegroundColor Yellow
+$loginSuccess = $false
 try {
-    $loginResponse = Invoke-WebRequest -Uri "$BaseURL/api/auth/login" `
-        -Method POST `
-        -ContentType 'application/json' `
-        -Body (@{
-            username = $global:username
-            password = "TestPass123!"
-        } | ConvertTo-Json) `
-        -UseBasicParsing `
-        -TimeoutSec 10
+    $loginPayload = @{
+        username = $script:Username
+        password = $testPassword
+    } | ConvertTo-Json
 
+    Write-Host "  Debug: Login payload: $loginPayload" -ForegroundColor Yellow
+    Write-Host "  Debug: Attempting login with username: $($script:Username)" -ForegroundColor Yellow
+    
+    $loginResponse = Invoke-WebRequest -Uri "$BaseURL/api/auth/login" -Method POST -ContentType 'application/json' -Body $loginPayload -UseBasicParsing -TimeoutSec 10
+    
     if ($loginResponse.StatusCode -eq 200) {
         $loginData = $loginResponse.Content | ConvertFrom-Json
-        $global:accessToken = $loginData.accessToken
-        $global:refreshToken = $loginData.refreshToken
-        Write-Host "✓ Login: SUCCESS" -ForegroundColor Green
-        Write-Host "  Token: $($global:accessToken.Substring(0, 30))..." -ForegroundColor Green
-    } else {
-        Write-Host "✗ Login: FAILED ($($loginResponse.StatusCode))" -ForegroundColor Red
+        $script:AccessToken = $loginData.accessToken
+        $script:RefreshToken = $loginData.refreshToken
+        Write-Host "  + SUCCESS: Login successful, token obtained" -ForegroundColor Green
+        $loginSuccess = $true
     }
 } catch {
-    Write-Host "✗ Login: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
-# Test 3: Get User Accounts
-Write-Host "TEST 3: Get User Accounts (Before Creation)" -ForegroundColor Yellow
+# Test 3: Create Savings Account
+Write-Host "TEST 3: Create Savings Account" -ForegroundColor Yellow
+$savingsSuccess = $false
 try {
-    $accountsResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/me" `
-        -Method GET `
-        -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
-    if ($accountsResponse.StatusCode -eq 200) {
-        $accounts = $accountsResponse.Content | ConvertFrom-Json
-        Write-Host "✓ Get Accounts: SUCCESS" -ForegroundColor Green
-        Write-Host "  Accounts Count: $(($accounts | Measure-Object).Count)" -ForegroundColor Green
-        if ($accounts.Count -gt 0) {
-            foreach ($acc in $accounts) {
-                Write-Host "  - Account: $($acc.accountNumber) ($($acc.type)) - Balance: $($acc.balance)" -ForegroundColor Green
-                if ($null -eq $global:account1Id) { $global:account1Id = $acc.id }
-                if ($null -eq $global:account2Id -and $acc.id -ne $global:account1Id) { $global:account2Id = $acc.id }
-            }
-        }
-    } else {
-        Write-Host "✗ Get Accounts: FAILED ($($accountsResponse.StatusCode))" -ForegroundColor Red
+    $savingsPayload = @{
+        accountType = "SAVINGS"
+        initialBalance = 5000.00
+    } | ConvertTo-Json
+    
+    $headers = @{"Authorization" = "Bearer $($script:AccessToken)"}
+    $savingsResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/create" -Method POST -ContentType 'application/json' -Headers $headers -Body $savingsPayload -UseBasicParsing -TimeoutSec 10
+    
+    if ($savingsResponse.StatusCode -in @(200, 201)) {
+        $account = $savingsResponse.Content | ConvertFrom-Json
+        $script:SavingsId = $account.id
+        $script:SavingsNumber = $account.accountNumber
+        Write-Host "  + SUCCESS: Savings Account $($account.accountNumber) created with balance INR $($account.balance)" -ForegroundColor Green
+        $savingsSuccess = $true
     }
 } catch {
-    Write-Host "✗ Get Accounts: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
-# Test 4: Create Savings Account
-Write-Host "TEST 4: Create Savings Account" -ForegroundColor Yellow
+# Test 4: Create Current Account
+Write-Host "TEST 4: Create Current Account" -ForegroundColor Yellow
+$currentSuccess = $false
 try {
-    $createAccResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/create" `
-        -Method POST `
-        -ContentType 'application/json' `
-        -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-        -Body (@{
-            accountType = "SAVINGS"
-            initialBalance = 5000.00
-        } | ConvertTo-Json) `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
-    if ($createAccResponse.StatusCode -in @(200, 201)) {
-        $newAccount = $createAccResponse.Content | ConvertFrom-Json
-        $global:account1Id = $newAccount.id
-        Write-Host "✓ Create Savings Account: SUCCESS" -ForegroundColor Green
-        Write-Host "  Account: $($newAccount.accountNumber) - Balance: $($newAccount.balance)" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Create Savings Account: FAILED ($($createAccResponse.StatusCode))" -ForegroundColor Red
+    $currentPayload = @{
+        accountType = "CURRENT"
+        initialBalance = 10000.00
+    } | ConvertTo-Json
+    
+    $headers = @{"Authorization" = "Bearer $($script:AccessToken)"}
+    $currentResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/create" -Method POST -ContentType 'application/json' -Headers $headers -Body $currentPayload -UseBasicParsing -TimeoutSec 10
+    
+    if ($currentResponse.StatusCode -in @(200, 201)) {
+        $account = $currentResponse.Content | ConvertFrom-Json
+        $script:CurrentId = $account.id
+        $script:CurrentNumber = $account.accountNumber
+        Write-Host "  + SUCCESS: Current Account $($account.accountNumber) created with balance INR $($account.balance)" -ForegroundColor Green
+        $currentSuccess = $true
     }
 } catch {
-    Write-Host "✗ Create Savings Account: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
-# Test 5: Create Current Account
-Write-Host "TEST 5: Create Current Account" -ForegroundColor Yellow
+# Test 5: Deposit Funds
+Write-Host "TEST 5: Deposit Funds to Savings" -ForegroundColor Yellow
+$depositSuccess = $false
 try {
-    $createAccResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/create" `
-        -Method POST `
-        -ContentType 'application/json' `
-        -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-        -Body (@{
-            accountType = "CURRENT"
-            initialBalance = 10000.00
-        } | ConvertTo-Json) `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
-    if ($createAccResponse.StatusCode -in @(200, 201)) {
-        $newAccount = $createAccResponse.Content | ConvertFrom-Json
-        $global:account2Id = $newAccount.id
-        Write-Host "✓ Create Current Account: SUCCESS" -ForegroundColor Green
-        Write-Host "  Account: $($newAccount.accountNumber) - Balance: $($newAccount.balance)" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Create Current Account: FAILED ($($createAccResponse.StatusCode))" -ForegroundColor Red
-    }
-} catch {
-    Write-Host "✗ Create Current Account: ERROR - $_" -ForegroundColor Red
-}
-Write-Host ""
-
-# Test 6: Deposit Funds
-Write-Host "TEST 6: Deposit Funds - 500 to Savings" -ForegroundColor Yellow
-try {
-    $depositResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/deposit" `
-        -Method POST `
-        -ContentType 'application/json' `
-        -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-        -Body (@{
-            accountId = $global:account1Id
-            amount = 500.00
-            description = "E2E Test Deposit"
-        } | ConvertTo-Json) `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
+    $depositPayload = @{
+        accountId = $script:SavingsId
+        amount = 500.00
+        description = "E2E Test Deposit"
+    } | ConvertTo-Json
+    
+    $headers = @{"Authorization" = "Bearer $($script:AccessToken)"}
+    $depositResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/deposit" -Method POST -ContentType 'application/json' -Headers $headers -Body $depositPayload -UseBasicParsing -TimeoutSec 10
+    
     if ($depositResponse.StatusCode -in @(200, 201)) {
-        Write-Host "✓ Deposit: SUCCESS" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Deposit: FAILED ($($depositResponse.StatusCode))" -ForegroundColor Red
+        Write-Host "  + SUCCESS: Deposited INR 500 to Savings Account" -ForegroundColor Green
+        $depositSuccess = $true
     }
 } catch {
-    Write-Host "✗ Deposit: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
-# Test 7: Transfer Funds Between Own Accounts
-Write-Host "TEST 7: Transfer Funds - 1000 from Savings to Current" -ForegroundColor Yellow
+# Test 6: Transfer Funds Between Accounts
+Write-Host "TEST 6: Transfer Funds Between Accounts" -ForegroundColor Yellow
+$transferSuccess = $false
 try {
-    if ($null -ne $global:account1Id -and $null -ne $global:account2Id) {
-        $transferResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/transfer" `
-            -Method POST `
-            -ContentType 'application/json' `
-            -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-            -Body (@{
-                fromAccountId = $global:account1Id
-                toAccountId = $global:account2Id
-                amount = 1000.00
-                description = "E2E Test Transfer"
-            } | ConvertTo-Json) `
-            -UseBasicParsing `
-            -TimeoutSec 10
-
+    if ($savingsSuccess -and $currentSuccess) {
+        $transferPayload = @{
+            fromAccountId = $script:SavingsId
+            toAccountId = $script:CurrentId
+            amount = 1000.00
+            description = "E2E Test Transfer"
+        } | ConvertTo-Json
+        
+        $headers = @{"Authorization" = "Bearer $($script:AccessToken)"}
+        $transferResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/transfer" -Method POST -ContentType 'application/json' -Headers $headers -Body $transferPayload -UseBasicParsing -TimeoutSec 10
+        
         if ($transferResponse.StatusCode -in @(200, 201)) {
-            Write-Host "✓ Transfer: SUCCESS" -ForegroundColor Green
-            Write-Host "  From Account $($global:account1Id) to Account $($global:account2Id)" -ForegroundColor Green
-        } else {
-            Write-Host "✗ Transfer: FAILED ($($transferResponse.StatusCode))" -ForegroundColor Red
+            Write-Host "  + SUCCESS: Transferred INR 1000 from Savings to Current" -ForegroundColor Green
+            $transferSuccess = $true
         }
-    } else {
-        Write-Host "✗ Transfer: SKIPPED - Accounts not available" -ForegroundColor Yellow
     }
 } catch {
-    Write-Host "✗ Transfer: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
-# Test 8: Withdraw Funds
-Write-Host "TEST 8: Withdraw Funds - 200 from Current" -ForegroundColor Yellow
+# Test 7: Withdraw Funds
+Write-Host "TEST 7: Withdraw Funds from Current" -ForegroundColor Yellow
+$withdrawSuccess = $false
 try {
-    $withdrawResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/withdraw" `
-        -Method POST `
-        -ContentType 'application/json' `
-        -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-        -Body (@{
-            accountId = $global:account2Id
-            amount = 200.00
-            description = "E2E Test Withdrawal"
-        } | ConvertTo-Json) `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
+    $withdrawPayload = @{
+        accountId = $script:CurrentId
+        amount = 200.00
+        description = "E2E Test Withdrawal"
+    } | ConvertTo-Json
+    
+    $headers = @{"Authorization" = "Bearer $($script:AccessToken)"}
+    $withdrawResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/withdraw" -Method POST -ContentType 'application/json' -Headers $headers -Body $withdrawPayload -UseBasicParsing -TimeoutSec 10
+    
     if ($withdrawResponse.StatusCode -in @(200, 201)) {
-        Write-Host "✓ Withdraw: SUCCESS" -ForegroundColor Green
-    } else {
-        Write-Host "✗ Withdraw: FAILED ($($withdrawResponse.StatusCode))" -ForegroundColor Red
+        Write-Host "  + SUCCESS: Withdrawn INR 200 from Current Account" -ForegroundColor Green
+        $withdrawSuccess = $true
     }
 } catch {
-    Write-Host "✗ Withdraw: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
-# Test 9: Search Transaction History
-Write-Host "TEST 9: Search Transaction History" -ForegroundColor Yellow
+# Test 8: Get Transaction History
+Write-Host "TEST 8: Get Transaction History" -ForegroundColor Yellow
+$txnSuccess = $false
 try {
-    $txnResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/search?limit=10" `
-        -Method GET `
-        -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
+    $headers = @{"Authorization" = "Bearer $($script:AccessToken)"}
+    $txnResponse = Invoke-WebRequest -Uri "$BaseURL/api/transactions/search?limit=10" -Method GET -Headers $headers -UseBasicParsing -TimeoutSec 10
+    
     if ($txnResponse.StatusCode -eq 200) {
         $transactions = $txnResponse.Content | ConvertFrom-Json
-        Write-Host "✓ Search Transactions: SUCCESS" -ForegroundColor Green
-        Write-Host "  Transactions Found: $(($transactions | Measure-Object).Count)" -ForegroundColor Green
-        if ($transactions.Count -gt 0) {
-            Write-Host "  Recent Transactions:" -ForegroundColor Green
-            $transactions | Select-Object -First 3 | ForEach-Object {
-                Write-Host "    - Type: $($_.transactionType) | Amount: $($_.amount) | Status: COMPLETED" -ForegroundColor Green
-            }
-        }
-    } else {
-        Write-Host "✗ Search Transactions: FAILED ($($txnResponse.StatusCode))" -ForegroundColor Red
+        $txnCount = @($transactions).Count
+        Write-Host "  + SUCCESS: Retrieved $txnCount transactions" -ForegroundColor Green
+        $txnSuccess = $true
     }
 } catch {
-    Write-Host "✗ Search Transactions: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
-# Test 10: Check Updated Account Balances
-Write-Host "TEST 10: Check Updated Account Balances" -ForegroundColor Yellow
+# Test 9: Get Account Balance Summary
+Write-Host "TEST 9: Get Account Balances" -ForegroundColor Yellow
+$balanceSuccess = $false
 try {
-    $accountsResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/me" `
-        -Method GET `
-        -Headers @{"Authorization" = "Bearer $($global:accessToken)"} `
-        -UseBasicParsing `
-        -TimeoutSec 10
-
-    if ($accountsResponse.StatusCode -eq 200) {
-        $accounts = $accountsResponse.Content | ConvertFrom-Json
-        Write-Host "✓ Final Account Status: SUCCESS" -ForegroundColor Green
-        foreach ($acc in $accounts) {
-            Write-Host "  - $($acc.type): $($acc.accountNumber) - Balance: $($acc.balance)" -ForegroundColor Green
+    $headers = @{"Authorization" = "Bearer $($script:AccessToken)"}
+    $balanceResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/me" -Method GET -Headers $headers -UseBasicParsing -TimeoutSec 10
+    
+    if ($balanceResponse.StatusCode -eq 200) {
+        $accounts = $balanceResponse.Content | ConvertFrom-Json
+        Write-Host "  + SUCCESS: Retrieved account balances:" -ForegroundColor Green
+        foreach ($acc in @($accounts)) {
+            Write-Host "    - $($acc.type): INR $($acc.balance)" -ForegroundColor Green
         }
-    } else {
-        Write-Host "✗ Final Account Status: FAILED ($($accountsResponse.StatusCode))" -ForegroundColor Red
+        $balanceSuccess = $true
     }
 } catch {
-    Write-Host "✗ Final Account Status: ERROR - $_" -ForegroundColor Red
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
+}
+Write-Host ""
+
+# Test 10: Check Backend Status
+Write-Host "TEST 10: Backend Status Check" -ForegroundColor Yellow
+$statusSuccess = $false
+try {
+    $statusResponse = Invoke-WebRequest -Uri "$BaseURL/api/accounts/me" -Method OPTIONS -UseBasicParsing -TimeoutSec 10
+    if ($statusResponse.StatusCode -eq 200) {
+        Write-Host "  + SUCCESS: Backend is responsive on port 8080" -ForegroundColor Green
+        $statusSuccess = $true
+    }
+} catch {
+    Write-Host "  - FAILED: $_" -ForegroundColor Red
 }
 Write-Host ""
 
 # Summary
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "E2E TEST SUITE COMPLETED" -ForegroundColor Cyan
+Write-Host "E2E TEST SUITE SUMMARY" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Frontend is accessible at: $frontendURL" -ForegroundColor Yellow
-Write-Host "Swagger UI available at: $BaseURL/swagger-ui.html" -ForegroundColor Yellow
-Write-Host "H2 Console available at: $BaseURL/h2-console" -ForegroundColor Yellow
+Write-Host "Test Results:" -ForegroundColor Yellow
+Write-Host "  1. Registration: $( if ($regSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($regSuccess) { 'Green' } else { 'Red' })
+Write-Host "  2. Login: $( if ($loginSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($loginSuccess) { 'Green' } else { 'Red' })
+Write-Host "  3. Create Savings: $( if ($savingsSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($savingsSuccess) { 'Green' } else { 'Red' })
+Write-Host "  4. Create Current: $( if ($currentSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($currentSuccess) { 'Green' } else { 'Red' })
+Write-Host "  5. Deposit: $( if ($depositSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($depositSuccess) { 'Green' } else { 'Red' })
+Write-Host "  6. Transfer: $( if ($transferSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($transferSuccess) { 'Green' } else { 'Red' })
+Write-Host "  7. Withdraw: $( if ($withdrawSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($withdrawSuccess) { 'Green' } else { 'Red' })
+Write-Host "  8. Transactions: $( if ($txnSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($txnSuccess) { 'Green' } else { 'Red' })
+Write-Host "  9. Balances: $( if ($balanceSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($balanceSuccess) { 'Green' } else { 'Red' })
+Write-Host "  10. Backend Status: $( if ($statusSuccess) { 'PASS' } else { 'FAIL' } )" -ForegroundColor $(if ($statusSuccess) { 'Green' } else { 'Red' })
 Write-Host ""
+Write-Host "Service URLs:" -ForegroundColor Cyan
+Write-Host "  Backend: $BaseURL" -ForegroundColor Yellow
+Write-Host "  Frontend: $FrontendURL" -ForegroundColor Yellow
+Write-Host "  Swagger UI: $BaseURL/swagger-ui.html" -ForegroundColor Yellow
+Write-Host "  H2 Console: $BaseURL/h2-console" -ForegroundColor Yellow
+Write-Host ""
+
