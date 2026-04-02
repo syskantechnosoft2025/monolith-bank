@@ -159,7 +159,66 @@ curl -X POST http://localhost:8080/api/auth/refresh \
   }'
 ```
 
-### 9. Access H2 Console (Dev Profile Only)
+### 9. Create Savings Account
+
+```bash
+curl -X POST http://localhost:8080/api/accounts/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "accountType": "SAVINGS",
+    "initialBalance": 1000.00
+  }'
+```
+
+**Response:**
+```json
+{
+  "id": 2,
+  "accountNumber": "SAV123456789",
+  "type": "SAVINGS",
+  "balance": 1000.00,
+  "createdAt": "2026-04-02T10:30:00Z"
+}
+```
+
+### 10. Create Current Account
+
+```bash
+curl -X POST http://localhost:8080/api/accounts/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "accountType": "CURRENT",
+    "initialBalance": 5000.00
+  }'
+```
+
+### 11. Create Deposit Account
+
+```bash
+curl -X POST http://localhost:8080/api/accounts/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "accountType": "DEPOSIT",
+    "initialBalance": 10000.00
+  }'
+```
+
+### 12. Create Loan Account
+
+```bash
+curl -X POST http://localhost:8080/api/accounts/create \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{
+    "accountType": "LOAN",
+    "initialBalance": 0.00
+  }'
+```
+
+### 13. Access H2 Console (Dev Profile Only)
 
 ```bash
 # In browser: http://localhost:8080/h2-console
@@ -168,10 +227,17 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 # Password: (leave blank)
 ```
 
-### 10. Access Swagger UI (API Documentation)
+### 14. Access Swagger UI (API Documentation)
 
 ```bash
 # In browser: http://localhost:8080/swagger-ui.html
+```
+
+### 15. Access OpenAPI Specification
+
+```bash
+# In browser or curl: http://localhost:8080/v3/api-docs
+# Returns complete OpenAPI 3.0 specification in JSON format
 ```
 
 ## Notes
